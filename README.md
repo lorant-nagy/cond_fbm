@@ -1,4 +1,4 @@
-# prediction law for fractional brownian motion
+# Prediction law for fractional Brownian motion
 
 Finite-dimensional implementation of the prediction law for fractional Brownian motion.
 
