@@ -3,16 +3,19 @@ from scipy.special import gamma
 from scipy.integrate import quad
 
 def r(H, t, s):
+
     return 0.5 * (t**(2*H) + s**(2*H) - np.abs(t - s)**(2*H))
 
 
 def d(H):
+
     numerator = 2 * H * gamma(3/2 - H)
     denominator = gamma(H + 1/2) * gamma(2 - 2*H)
     return np.sqrt(numerator / denominator)
 
 
 def k(H, t, s):
+
     if s >= t or s <= 0:
         return 0.0
     
@@ -29,6 +32,7 @@ def k(H, t, s):
 
 
 def psi(H, t, s, u):
+
     if s >= u or s <= 0 or t < u:
         return 0.0
     
@@ -46,9 +50,9 @@ def psi(H, t, s, u):
 
 
 def r_hat(H, t, s, u):
-    if u > min(t, s):
-        raise ValueError(f"Conditioning time u={u} must be ≤ min(t, s)")
     
+    assert u <= min(t, s), f"Conditioning time u={u} must be ≤ min(t={t}, s={s})"
+
     base_cov = r(H, t, s)
     
     if u <= 1e-10:
@@ -65,17 +69,13 @@ def r_hat(H, t, s, u):
 
 def m_hat(H, t, u, past_times, past_values):
 
-    if t < u:
-        raise ValueError(f"Prediction time t={t} must be ≥ conditioning time u={u}")
+    assert t >= u, f"Prediction time t={t} must be ≥ conditioning time u={u}"
     
     past_times = np.asarray(past_times)
     past_values = np.asarray(past_values)
     
-    if len(past_times) != len(past_values):
-        raise ValueError(f"Length mismatch: {len(past_times)} times vs {len(past_values)} values")
-    
-    if not np.isclose(past_times[-1], u, rtol=1e-6):
-        raise ValueError(f"Last observation time {past_times[-1]} must equal u={u}")
+    assert len(past_times) == len(past_values), "Length mismatch between times and values"
+    assert np.isclose(past_times[-1], u, rtol=1e-6), f"Last observation time {past_times[-1]} must equal u={u}"
     
     if np.isclose(t, u, rtol=1e-6):
         return past_values[-1]
