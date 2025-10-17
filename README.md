@@ -1,4 +1,4 @@
-# FBM Prediction
+# prediction law for fractional brownian motion
 
 Finite-dimensional implementation of the prediction law for fractional Brownian motion.
 
