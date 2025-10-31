@@ -2,7 +2,7 @@
 
 Finite-dimensional implementation of the prediction law for fractional Brownian motion.
 
-Based on: Tommi Sottinen, Lauri Viitasaari, *Prediction law of fractional Brownian motion*, Statistics & Probability Letters, Volume 129, 2017, Pages 155-166, ISSN 0167-7152, https://doi.org/10.1016/j.spl.2017.05.004
+Based on: Tommi Sottinen, Lauri Viitasaari, *Prediction law of fractional Brownian motion*, Statistics & Probability Letters, Volume 129, 2017, Pages 155-166, ISSN 0167-7152
 
 ## Usage
 
