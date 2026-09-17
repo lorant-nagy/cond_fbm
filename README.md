@@ -16,6 +16,8 @@ and
 
 The covariance is evaluated from the formula above. The Wiener integral in the mean is approximated with a discrete past path using stepfunctions.
 
+Based on: T. Sottinen and L. Viitasaari, *Prediction law of fractional Brownian motion*, Statistics & Probability Letters 129 (2017), 155-166.
+
 ## Example
 
 ```python
@@ -42,5 +44,3 @@ print(samples.shape)
 ```
 
 Requires `numpy` and `scipy`.
-
-Based on: T. Sottinen and L. Viitasaari, *Prediction law of fractional Brownian motion*, Statistics & Probability Letters 129 (2017), 155-166.
