@@ -1,141 +1,144 @@
 import numpy as np
-from scipy.special import gamma
 from scipy.integrate import quad
+from scipy.special import gamma
+
+
+def _check_h(H):
+    if not 0 < H < 1:
+        raise ValueError("H must be in (0, 1)")
+
 
 def r(H, t, s):
-
-    return 0.5 * (t**(2*H) + s**(2*H) - np.abs(t - s)**(2*H))
+    _check_h(H)
+    return 0.5 * (t ** (2 * H) + s ** (2 * H) - abs(t - s) ** (2 * H))
 
 
 def d(H):
-
-    numerator = 2 * H * gamma(3/2 - H)
-    denominator = gamma(H + 1/2) * gamma(2 - 2*H)
-    return np.sqrt(numerator / denominator)
+    _check_h(H)
+    return np.sqrt(
+        2 * H * gamma(1.5 - H)
+        / (gamma(H + 0.5) * gamma(2 - 2 * H))
+    )
 
 
 def k(H, t, s):
-
-    if s >= t or s <= 0:
+    """Volterra kernel k_H(t,s), equation (2.1) in the paper."""
+    _check_h(H)
+    if not (0 < s < t):
         return 0.0
-    
-    dH = d(H)
-    term1 = (t/s)**(H - 0.5) * (t - s)**(H - 0.5)
-    
+    if abs(H - 0.5) < 1e-14:
+        return 1.0
+
+    term1 = (t / s) ** (H - 0.5) * (t - s) ** (H - 0.5)
+
     def integrand(z):
-        return z**(H - 1.5) * (z - s)**(H - 0.5)
-    
-    integral, _ = quad(integrand, s, t, limit=100)
-    term2 = (H - 0.5) * s**(0.5 - H) * integral
-    
-    return dH * (term1 - term2)
+        return z ** (H - 1.5) * (z - s) ** (H - 0.5)
+
+    integral, _ = quad(integrand, s, t, limit=200, epsabs=1e-10, epsrel=1e-10)
+    term2 = (H - 0.5) * s ** (0.5 - H) * integral
+    return d(H) * (term1 - term2)
 
 
 def psi(H, t, s, u):
-
-    if s >= u or s <= 0 or t < u:
+    """Prediction kernel Psi_H(t,s|u), Theorem 3.1."""
+    _check_h(H)
+    if t < u:
+        raise ValueError("t must be >= u")
+    if not (0 < s < u) or t == u:
         return 0.0
-    
+    if abs(H - 0.5) < 1e-14:
+        return 0.0
+
     coeff = -np.sin(np.pi * (H - 0.5)) / np.pi
-    factor = s**(0.5 - H) * (u - s)**(0.5 - H)
-    
+    factor = s ** (0.5 - H) * (u - s) ** (0.5 - H)
+
     def integrand(z):
-        numerator = z**(H - 0.5) * (z - u)**(H - 0.5)
-        denominator = z - s
-        return numerator / denominator
-    
-    integral, _ = quad(integrand, u, t, limit=100)
-    
+        return z ** (H - 0.5) * (z - u) ** (H - 0.5) / (z - s)
+
+    integral, _ = quad(integrand, u, t, limit=200, epsabs=1e-10, epsrel=1e-10)
     return coeff * factor * integral
 
 
-def r_hat(H, t, s, u):
-    
-    assert u <= min(t, s), f"Conditioning time u={u} must be ≤ min(t={t}, s={s})"
+def conditional_mean(H, t, past_times, past_values):
+    """
+    Numerical approximation of Theorem 3.1's conditional mean.
 
-    base_cov = r(H, t, s)
-    
-    if u <= 1e-10:
-        return base_cov
-    
-    def integrand(v):
-        return k(H, t, v) * k(H, s, v)
-    
-    eps = max(1e-8, u * 1e-5)
-    integral, _ = quad(integrand, eps, u, limit=100, epsabs=1e-8, epsrel=1e-8)
-    
-    return base_cov - integral
+    The Wiener integral is approximated by a step-function sum
+        sum Psi(t, s_i* | u) [B(t_{i+1}) - B(t_i)],
+    using interval midpoints s_i*.
+    """
+    _check_h(H)
+    times = np.asarray(past_times, dtype=float)
+    values = np.asarray(past_values, dtype=float)
 
+    if times.ndim != 1 or values.ndim != 1 or len(times) != len(values):
+        raise ValueError("past_times and past_values must be one-dimensional and have equal length")
+    if len(times) < 2:
+        raise ValueError("at least two past observations are required")
+    if not np.isclose(times[0], 0.0):
+        raise ValueError("past_times must start at 0")
+    if np.any(np.diff(times) <= 0):
+        raise ValueError("past_times must be strictly increasing")
 
-def m_hat(H, t, u, past_times, past_values):
+    u = times[-1]
+    if t < u:
+        raise ValueError("prediction time t must be >= the last past time u")
+    if np.isclose(t, u):
+        return values[-1]
+    if abs(H - 0.5) < 1e-14:
+        return values[-1]
 
-    assert t >= u, f"Prediction time t={t} must be ≥ conditioning time u={u}"
-    
-    past_times = np.asarray(past_times)
-    past_values = np.asarray(past_values)
-    
-    assert len(past_times) == len(past_values), "Length mismatch between times and values"
-    assert np.isclose(past_times[-1], u, rtol=1e-6), f"Last observation time {past_times[-1]} must equal u={u}"
-    
-    if np.isclose(t, u, rtol=1e-6):
-        return past_values[-1]
-    
-    BH_u = past_values[-1]
-
-    integral_sum = 0.0
-    
-    for i in range(len(past_times) - 1):
-        t_i = past_times[i]
-        t_next = past_times[i + 1]
-
-        if t_i <= 1e-10:
-            continue
-        
-        s_mid = (t_i + t_next) / 2
-        
-        psi_val = psi(H, t, s_mid, u)
-
-        dBH = past_values[i + 1] - past_values[i]
-
-        integral_sum += psi_val * dBH
-
-    return BH_u - integral_sum
+    midpoints = 0.5 * (times[:-1] + times[1:])
+    increments = np.diff(values)
+    weights = np.array([psi(H, t, s, u) for s in midpoints])
+    return values[-1] - weights @ increments
 
 
-def build_conditional_mean_vector(H, future_times, u, past_times, past_values):
+def conditional_covariance(H, t, s, u):
+    """Conditional covariance from Theorem 3.1, evaluated in its stable form."""
+    _check_h(H)
+    if u < 0 or t < u or s < u:
+        raise ValueError("require 0 <= u <= min(t, s)")
 
-    future_times = np.asarray(future_times)
-    past_times = np.asarray(past_times)
-    past_values = np.asarray(past_values)
-    
-    assert np.all(future_times >= u), f"All future times must be ≥ u={u}"
-    assert len(past_times) == len(past_values), "Length mismatch between times and values"
-    assert np.isclose(past_times[-1], u, rtol=1e-6), f"Last time {past_times[-1]} must equal u={u}"
-    
-    n_future = len(future_times)
-    mean_vector = np.zeros(n_future)
-    
-    for i, t in enumerate(future_times):
-        mean_vector[i] = m_hat(H, t, u, past_times, past_values)
-    
-    return mean_vector
+    upper = min(t, s)
+    if np.isclose(u, upper):
+        return 0.0
+    if np.isclose(u, 0.0):
+        return r(H, t, s)
+    if abs(H - 0.5) < 1e-14:
+        return upper - u
+
+    value, _ = quad(
+        lambda v: k(H, t, v) * k(H, s, v),
+        u,
+        upper,
+        limit=200,
+        epsabs=1e-9,
+        epsrel=1e-9,
+    )
+    return value
 
 
-def build_conditional_covariance_matrix(H, future_times, u):
+def conditional_law(H, future_times, past_times, past_values):
+    """Return mean vector and covariance matrix of the discretized future law."""
+    future = np.asarray(future_times, dtype=float)
+    past_times = np.asarray(past_times, dtype=float)
+    past_values = np.asarray(past_values, dtype=float)
 
-    future_times = np.asarray(future_times)
-    n_future = len(future_times)
-    
-    assert np.all(future_times >= u), f"All future times must be ≥ u={u}"
-    
-    cov_matrix = np.zeros((n_future, n_future))
-    
-    for i in range(n_future):
-        for j in range(i, n_future):
-            cov_matrix[i, j] = r_hat(H, future_times[i], future_times[j], u)
-            
-            if i != j:
-                cov_matrix[j, i] = cov_matrix[i, j]
-    
-    return cov_matrix
+    if future.ndim != 1 or len(future) == 0:
+        raise ValueError("future_times must be a non-empty one-dimensional array")
+    u = past_times[-1]
+    if np.any(future < u):
+        raise ValueError("all future times must be >= u")
 
+    mean = np.array([conditional_mean(H, t, past_times, past_values) for t in future])
+
+    n = len(future)
+    cov = np.empty((n, n))
+    for i in range(n):
+        for j in range(i, n):
+            value = conditional_covariance(H, future[i], future[j], u)
+            cov[i, j] = value
+            cov[j, i] = value
+
+    return mean, cov
